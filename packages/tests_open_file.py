@@ -53,6 +53,29 @@ class TestOpenFile(unittest.TestCase):
         self.assertEqual(None, ofile.SizeTranslateValue(variation='false1',
                                                          row=row))
 
+    def test_find_duplicates(self):
+        print('test find_duplicates')
+        test_dict = {
+            'test1': {'color_value': 'rot', 'color_id': 10,
+                      'color_value_translation': 'red'},
+            'test2': {'color_value': 'blau', 'color_id': 11,
+                      'color_value_translation': 'blue'},
+            'test3': {'color_value': 'gruen', 'color_id': 12,
+                      'color_value_translation': 'green'},
+            'test4': {'color_value': 'rot', 'color_id': 14,
+                      'color_value_translation': 'red1'},
+            'test5': {'color_value': 'rot1', 'color_id': 10,
+                      'color_value_translation': 'red12'},
+            'test6': {'color_value': 'rot13', 'color_id': 15,
+                      'color_value_translation': 'red'}
+        }
+        good_result = ['test1', 'test2', 'test3']
+        bad_result = [*test_dict]
+
+        new_dict = ofile.find_duplicates(test_dict)
+
+        self.assertListEqual([*new_dict], good_result)
+
 
 if __name__ == '__main__':
     unittest.main()

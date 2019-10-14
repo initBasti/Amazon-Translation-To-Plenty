@@ -8,6 +8,7 @@ import argparse
 from tkinter import messagebox as tmb
 from packages.openfile import findFile, openFiles
 from packages.openfile import property_assign, feature_assign, text_assign
+from packages.openfile import find_duplicates
 from packages.writefile import writeFile
 
 
@@ -93,24 +94,21 @@ def main():
                   .format(sys.exc_info()[2].tb_lineno, err))
 
         for i in [*x_Data]:
-            try:
-                if(lang == 'DEFAULT'):
-                    print("WARNING: No language assigned, adjust file!")
-                if i == 'property':
-                    x_Data[i] = property_assign(files=inputfiles['translation'],
-                                                lang=lang)
-                elif i == 'feature':
-                    x_Data[i] = feature_assign(files=inputfiles['translation'],
-                                               lang=lang)
-                elif i == 'text':
-                    x_Data[i] = text_assign(files=inputfiles['translation'])
-            except Exception as err:
-                print("Error @ line : {0} {1} assign\nError: {2}\n"
-                      .format(sys.exc_info()[2].tb_lineno, i, err))
+            if(lang == 'DEFAULT'):
+                print("WARNING: No language assigned, adjust file!")
+            if i == 'property':
+                x_Data[i] = property_assign(files=inputfiles['translation'],
+                                            lang=lang)
+            elif i == 'feature':
+                x_Data[i] = feature_assign(files=inputfiles['translation'],
+                                            lang=lang)
+            elif i == 'text':
+                x_Data[i] = text_assign(files=inputfiles['translation'])
 
         # =================================================================
-        # create the upload format
+        # create the upload format, remove duplicates
         # =================================================================
+        Data = find_duplicates(Data)
         column_names = ['value-name', 'value-id']
         for row in Data:
             if(Data[row]['color_value_translation']):
@@ -156,7 +154,6 @@ def main():
                                                  fieldnames=f_name)
                     elif i == 'feature':
                         f_name = [*x_Data['feature'][[*x_Data['feature']][0]]]
-                        print(f_name)
                         featurefile = writeFile(dataset=x_Data['feature'],
                                                 filename='feature_' + name,
                                                 folder=outputpath,

@@ -134,7 +134,7 @@ def openFiles(files):
 
                         variation = row['Variation.number']
                         color = parseColorValue(attr)
-                        size = parseSizeValue(attr)
+                        # size = parseSizeValue(attr)
 
                         if(color):
                             found_color = True
@@ -160,9 +160,9 @@ def openFiles(files):
                             if(Data[d]['found_color']):
                                 c_t = ColorTranslateValue(Data[d]['variation'],
                                                           row)
-                            if(Data[d]['found_size']):
-                                s_t = SizeTranslateValue(Data[d]['variation'],
-                                                         row)
+                            # if(Data[d]['found_size']):
+                            # s_t = SizeTranslateValue(Data[d]['variation'],
+                                #                             row)
 
                             if(c_t):
                                 Data[d]['color_value_translation'] = c_t
@@ -184,7 +184,7 @@ def openFiles(files):
                                                       row=row)
                             if(Data[d]['found_size'] and
                                Data[d]['size_value_translation']):
-                                c_id = findIdForValue(Data[d]['size_value'],
+                                s_id = findIdForValue(Data[d]['size_value'],
                                                       row=row)
                             if(c_id):
                                 Data[d]['color_id'] = c_id
@@ -296,8 +296,8 @@ def findIdForValue(value, row):
     if('AttributeValue.id' in [*row] and
        'AttributeValueName.name' in [*row] and
        'AttributeValue.backendName' in [*row]):
-        if(re.match(value, row['AttributeValue.backendName'], re.IGNORECASE)
-           or re.match(value, row['AttributeValueName.name'], re.IGNORECASE)):
+        if(re.fullmatch(value, row['AttributeValue.backendName'])
+           or re.fullmatch(value, row['AttributeValueName.name'])):
             return row['AttributeValue.id']
         else:
             return None
@@ -322,8 +322,6 @@ def ColorTranslateValue(variation, row):
 def SizeTranslateValue(variation, row):
     if('item_sku' in [*row] and 'size_name' in [*row]):
         if(re.match(variation, row['item_sku'], re.IGNORECASE)):
-            print("input:{0},{1}|output:{2}"
-                  .format(variation, row, row['size_name']))
             return row['size_name']
         else:
             return None
@@ -351,6 +349,7 @@ def property_assign(files, lang):
     }
 
     Data = Odict()
+    num = 0
 
     column_names = ['sku', 'id', 'value', 'lang']
     with open(files['path'], 'r', encoding=files['encoding']) as i:
@@ -361,21 +360,22 @@ def property_assign(files, lang):
             id_value = 0
             sku = row['item_sku']
             value = ''
-            if(not(row['parent_child'] == 'parent')):
-                break
-            try:
-                for i, field in enumerate(id_fields):
-                    if(id_fields[field] in [*row]):
-                        if(row[id_fields[field]]):
-                            id_value = field
-                            value = row[id_fields[field]]
-                            values = [sku, id_value, value, lang]
+            if(not(row['parent_child'] == 'child')):
+                try:
+                    for i, field in enumerate(id_fields):
+                        if(id_fields[field] in [*row]):
+                            if(row[id_fields[field]]):
+                                id_value = field
+                                value = row[id_fields[field]]
+                                values = [sku, id_value, value, lang]
 
-                            Data[sku + '_' + field] = Odict(zip(column_names,
-                                                                values))
-            except Exception as err:
-                print("Error @ property_assign line: {0}find fields\n{1}|{2}\n"
-                      .format(sys.exc_info()[2].tb_lineno, err))
+                                Data[sku+'_'+field+'_'+str(num)] = \
+                                    Odict(zip(column_names,
+                                              values))
+                                num = num+1
+                except Exception as err:
+                    print("Error @ property_assign line: {0}find fields\n{1}\n"
+                          .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
         print("property find execution time: {0}us"
               .format(round(endtime-starttime)*1000000, 4))
@@ -418,7 +418,7 @@ def feature_assign(files, lang):
                                 Data[sku+'_'+field] = Odict(zip(column_names,
                                                                 values))
             except Exception as err:
-                print("Error @ feature_assign line: {0}find fields\n{1}|{2}\n"
+                print("Error @ feature_assign line: {0}find fields\n{1}\n"
                       .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
         print("feature find execution time: {0}us"
@@ -429,6 +429,7 @@ def feature_assign(files, lang):
 
 def text_assign(files):
     Data = Odict()
+    num = 0
 
     column_names = ['sku', 'description', 'keywords']
     with open(files['path'], 'r', encoding=files['encoding']) as i:
@@ -440,16 +441,48 @@ def text_assign(files):
             desc = row['product_description']
             keys = row['generic_keywords']
             try:
-                if(not(row['parent_child'] == 'parent')):
-                    break
-                values = [sku, desc, keys]
+                if(not(row['parent_child'] == 'child')):
+                    values = [sku, desc, keys]
 
-                Data[sku] = Odict(zip(column_names, values))
+                    Data[sku+"_"+str(num)] = Odict(zip(column_names, values))
+                    num = num+1
             except Exception as err:
-                print("Error @ text_assign line: {0}find fields\n{1}|{2}\n"
+                print("Error @ text_assign line: {0}find fields\n{0}|{1}\n"
                       .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
         print("text find execution time: {0}us"
               .format(round(endtime-starttime)*1000000, 4))
 
     return Data
+
+
+def find_duplicates(target):
+    color_set = set()
+    id_set = set()
+    translation_set = set()
+    remove = set()
+
+    for row in target:
+        color = target[row]['color_value']
+        id_value = target[row]['color_id']
+        translation = target[row]['color_value_translation']
+        if(color in color_set):
+            remove.add(row)
+        else:
+            color_set.add(color)
+
+        if(id_value in id_set):
+            remove.add(row)
+        else:
+            id_set.add(id_value)
+
+        if(translation in translation_set):
+            remove.add(row)
+        else:
+            translation_set.add(translation)
+
+    copy = dict(target)
+    for i in remove:
+        del copy[i]
+
+    return copy

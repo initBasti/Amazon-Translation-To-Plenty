@@ -109,9 +109,11 @@ def openFiles(files):
                     'color_value',
                     'color_value_translation',
                     'color_id',
+                    'color_backend',
                     'size_value',
                     'size_value_translation',
                     'size_id',
+                    'size_backend',
                     'found_color',
                     'found_size']
 
@@ -176,20 +178,22 @@ def openFiles(files):
                     # id file
                     try:
                         for d in Data:
-                            c_id = 0
-                            s_id = 0
+                            c_data = dict()
+                            s_data = dict()
                             if(Data[d]['found_color'] and
                                Data[d]['color_value_translation']):
-                                c_id = findIdForValue(Data[d]['color_value'],
+                                c_data = findIdForValue(Data[d]['color_value'],
                                                       row=row)
                             if(Data[d]['found_size'] and
                                Data[d]['size_value_translation']):
-                                s_id = findIdForValue(Data[d]['size_value'],
+                                s_data = findIdForValue(Data[d]['size_value'],
                                                       row=row)
-                            if(c_id):
-                                Data[d]['color_id'] = c_id
-                            if(c_id):
-                                Data[d]['size_id'] = s_id
+                            if(c_data):
+                                Data[d]['color_id'] = c_data['id']
+                                Data[d]['color_backend'] = c_data['backend']
+                            if(s_data):
+                                Data[d]['size_id'] = s_data['id']
+                                Data[d]['size_backend'] = s_data['backend']
                     except Exception as err:
                         print("Error @ line(openFile): {0} id\n{1}\n"
                               .format(sys.exc_info()[2].tb_lineno, err))
@@ -293,14 +297,22 @@ def parseSizeValue(line):
 
 
 def findIdForValue(value, row):
+    attr_data = Odict()
+    columns = {'id': '', 'backend': ''}
+
     if('AttributeValue.id' in [*row] and
        'AttributeValueName.name' in [*row] and
        'AttributeValue.backendName' in [*row]):
         if(re.fullmatch(value, row['AttributeValue.backendName'])
            or re.fullmatch(value, row['AttributeValueName.name'])):
-            return row['AttributeValue.id']
+            values = [row['AttributeValue.id'],
+                      row['AttributeValue.backendName']]
+            attr_data[value] = Odict(zip(columns, values))
+            return attr_data[value]
         else:
-            return None
+            values = [None, None]
+            attr_data[value] = Odict(zip(columns, values))
+            return attr_data[value]
     else:
         raise WrongFormatError('The file has the wrong header')
 

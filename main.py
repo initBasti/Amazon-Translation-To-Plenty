@@ -101,7 +101,7 @@ def main():
                                             lang=lang)
             elif i == 'feature':
                 x_Data[i] = feature_assign(files=inputfiles['translation'],
-                                            lang=lang)
+                                           lang=lang)
             elif i == 'text':
                 x_Data[i] = text_assign(files=inputfiles['translation'])
 
@@ -109,16 +109,16 @@ def main():
         # create the upload format, remove duplicates
         # =================================================================
         Data = find_duplicates(Data)
-        column_names = ['value-name', 'value-id']
+        column_names = ['value-name', 'value-id', 'value-backend']
         for row in Data:
             if(Data[row]['color_value_translation']):
                 values = [Data[row]['color_value_translation'],
-                          Data[row]['color_id']]
+                          Data[row]['color_id'], Data[row]['color_backend']]
                 attribute_data[row + '_color'] = Odict(zip(column_names,
                                                            values))
             if(Data[row]['size_value_translation']):
                 values = [Data[row]['size_value_translation'],
-                          Data[row]['size_id']]
+                          Data[row]['size_id'], Data[row]['backend']]
                 attribute_data[row + '_size'] = Odict(zip(column_names,
                                                           values))
 
@@ -198,7 +198,6 @@ def main():
             tmb.showinfo("Success!", "Created {0} at\n{1}"
                          .format(",".join(success_list),
                                  outputpath))
-
 
     else:
         # =====================================================================

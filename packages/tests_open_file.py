@@ -33,9 +33,14 @@ class TestOpenFile(unittest.TestCase):
                 'AttributeValue.id': '9'
         }
         value = 'red'
+        test_dict = dict()
+        result_dict_1 = {'id': '9', 'backend': 'red'}
+        result_dict_2 = {'id': None, 'backend': None}
 
-        self.assertTrue(ofile.findIdForValue(value=value, row=row))
-        self.assertFalse(ofile.findIdForValue(value='blue', row=row))
+        test_dict = ofile.findIdForValue(value=value, row=row)
+        self.assertDictEqual(test_dict, result_dict_1)
+        test_dict = ofile.findIdForValue(value='blue', row=row)
+        self.assertDictEqual(test_dict, result_dict_2)
 
     def test_ColorTranslateValue(self):
         print('test ColorTranslateValue')
@@ -49,9 +54,9 @@ class TestOpenFile(unittest.TestCase):
         print('test SizeTranslateValue')
         row = {'item_sku': 'test1', 'size_name': 'M'}
         self.assertEqual('M', ofile.SizeTranslateValue(variation='test1',
-                                                        row=row))
+                                                       row=row))
         self.assertEqual(None, ofile.SizeTranslateValue(variation='false1',
-                                                         row=row))
+                                                        row=row))
 
     def test_find_duplicates(self):
         print('test find_duplicates')
@@ -70,7 +75,6 @@ class TestOpenFile(unittest.TestCase):
                       'color_value_translation': 'red'}
         }
         good_result = ['test1', 'test2', 'test3']
-        bad_result = [*test_dict]
 
         new_dict = ofile.find_duplicates(test_dict)
 

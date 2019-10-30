@@ -105,17 +105,14 @@ def findFile(path, amount):
 
 def openFiles(files):
     Data = Odict()
+    variset = set()
+    translations = set()
     column_names = ['variation',
                     'color_value',
                     'color_value_translation',
                     'color_id',
                     'color_backend',
-                    'size_value',
-                    'size_value_translation',
-                    'size_id',
-                    'size_backend',
-                    'found_color',
-                    'found_size']
+                    'found_color']
 
     for index, f in enumerate([*files]):
         with open(files[f]['path'], 'r', encoding=files[f]['encoding']) as i:
@@ -125,28 +122,23 @@ def openFiles(files):
             for row in reader:
                 if(index == 0):
                     try:
-                        # color-connect file
                         color = ''
                         size = ''
                         attr = row['VariationAttributeValues.attributeValues']
                         found_color = False
-                        found_size = False
                         if(row['Variation.isMain'] == 1):
                             break
 
                         variation = row['Variation.number']
                         color = parseColorValue(attr)
-                        # size = parseSizeValue(attr)
 
                         if(color):
                             found_color = True
-                        if(size):
-                            found_size = True
+                            variset.add(variation)
 
                         values = [variation,
-                                  color, '', '',
-                                  size, '', '',
-                                  found_color, found_size]
+                                  color, '', '', '',
+                                  found_color]
 
                         Data[variation] = Odict(zip(column_names, values))
                     except Exception as err:
@@ -156,47 +148,36 @@ def openFiles(files):
                 elif(index == 1):
                     # translation file
                     try:
-                        for d in Data:
+                        if(row['item_sku'] in variset):
                             c_t = ''
-                            s_t = ''
-                            if(Data[d]['found_color']):
-                                c_t = ColorTranslateValue(Data[d]['variation'],
+                            if(Data[row['item_sku']]['found_color']):
+                                c_t = ColorTranslateValue(row['item_sku'],
                                                           row)
-                            # if(Data[d]['found_size']):
-                            # s_t = SizeTranslateValue(Data[d]['variation'],
-                                #                             row)
-
+                                translations.add(row['item_sku'])
                             if(c_t):
-                                Data[d]['color_value_translation'] = c_t
-                            if(s_t):
-                                Data[d]['size_value_translation'] = s_t
+                                Data[row['item_sku']]['color_value_translation'] = c_t
                     except Exception as err:
                         print("Error @ line(openFile): {0} translation\n{1}\n"
                               .format(sys.exc_info()[2].tb_lineno, err))
+                        sys.exit(1)
 
                 elif(index == 2):
                     # id file
                     try:
-                        for d in Data:
+                        for vari in translations:
                             c_data = dict()
-                            s_data = dict()
-                            if(Data[d]['found_color'] and
-                               Data[d]['color_value_translation']):
-                                c_data = findIdForValue(Data[d]['color_value'],
-                                                      row=row)
-                            if(Data[d]['found_size'] and
-                               Data[d]['size_value_translation']):
-                                s_data = findIdForValue(Data[d]['size_value'],
-                                                      row=row)
-                            if(c_data):
-                                Data[d]['color_id'] = c_data['id']
-                                Data[d]['color_backend'] = c_data['backend']
-                            if(s_data):
-                                Data[d]['size_id'] = s_data['id']
-                                Data[d]['size_backend'] = s_data['backend']
+                            if(Data[vari]['found_color'] and
+                                Data[vari]['color_value_translation']):
+                                c_data = findIdForValue(Data[vari]['color_value'],
+                                                        row=row)
+                            if(c_data['id']):
+                                Data[vari]['color_id'] = c_data['id']
+                            if(c_data['backend']):
+                                Data[vari]['color_backend'] = c_data['backend']
                     except Exception as err:
                         print("Error @ line(openFile): {0} id\n{1}\n"
                               .format(sys.exc_info()[2].tb_lineno, err))
+                        sys.exit(1)
 
             endtime = time.time()
             print("file[{0}] execution time: {1}us"
@@ -259,43 +240,6 @@ def parseColorValue(line):
     elif(not(re.search(r'color', line))):
         return None
 
-    return None
-
-
-def parseSizeValue(line):
-    full_option = 0
-    line_list = []
-    if(not(line)):
-        return None
-    if(re.search(r'size_name', line)):
-        if(re.search(r'color', line) and re.search(r',', line)):
-            line_list = line.split(',')
-        else:
-            if(re.search(r':', line) and not(re.search(r',', line))):
-                return line.split(':')[1]
-
-        if(len(line_list) > 2):
-            for i in range(len(line_list)):
-                if(not(re.search(r':', line_list[i]))):
-                    # in case the value contains a ','
-                    new_value = ','.join(line_list[i-1:i])
-                    if(re.search(r'size', new_value)):
-                        return new_value.split(':')[1]
-                else:
-                    full_option = full_option + 1
-                if(full_option > 2):
-                    raise TooManyOptionsError('Too many Options:{0}'
-                                              .format(line))
-        elif(len(line_list) == 2):
-            for i in range(2):
-                if(re.search(r'size_name', line_list[i])):
-                    return line_list[i].split(':')[1]
-    elif(not(re.search(r'size_name', line))):
-        return None
-
-    return None
-
-
 def findIdForValue(value, row):
     attr_data = Odict()
     columns = {'id': '', 'backend': ''}
@@ -316,7 +260,7 @@ def findIdForValue(value, row):
     else:
         raise WrongFormatError('The file has the wrong header')
 
-    return None
+    return {'id':None, 'backend':None}
 
 
 def ColorTranslateValue(variation, row):
@@ -327,19 +271,6 @@ def ColorTranslateValue(variation, row):
             return None
     else:
         raise WrongFormatError('The file has the wrong header')
-
-    return None
-
-
-def SizeTranslateValue(variation, row):
-    if('item_sku' in [*row] and 'size_name' in [*row]):
-        if(re.match(variation, row['item_sku'], re.IGNORECASE)):
-            return row['size_name']
-        else:
-            return None
-    else:
-        raise WrongFormatError('The file has the wrong header:{0}'
-                               .format([*row]))
 
     return None
 
@@ -389,8 +320,8 @@ def property_assign(files, lang):
                     print("Error @ property_assign line: {0}find fields\n{1}\n"
                           .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
-        print("property find execution time: {0}us"
-              .format(round(endtime-starttime)*1000000, 4))
+        print("property find execution time: {0} us"
+              .format(round(endtime-starttime, 4)*1000000))
 
     return Data
 
@@ -433,8 +364,8 @@ def feature_assign(files, lang):
                 print("Error @ feature_assign line: {0}find fields\n{1}\n"
                       .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
-        print("feature find execution time: {0}us"
-              .format(round(endtime-starttime)*1000000, 4))
+        print("feature find execution time: {0} us"
+              .format(round(endtime-starttime, 4)*1000000))
 
     return Data
 
@@ -462,8 +393,8 @@ def text_assign(files):
                 print("Error @ text_assign line: {0}find fields\n{0}|{1}\n"
                       .format(sys.exc_info()[2].tb_lineno, err))
         endtime = time.time()
-        print("text find execution time: {0}us"
-              .format(round(endtime-starttime)*1000000, 4))
+        print("text find execution time: {0} us"
+              .format(round(endtime-starttime, 4)*1000000))
 
     return Data
 

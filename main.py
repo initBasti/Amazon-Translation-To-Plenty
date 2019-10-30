@@ -116,11 +116,6 @@ def main():
                           Data[row]['color_id'], Data[row]['color_backend']]
                 attribute_data[row + '_color'] = Odict(zip(column_names,
                                                            values))
-            if(Data[row]['size_value_translation']):
-                values = [Data[row]['size_value_translation'],
-                          Data[row]['size_id'], Data[row]['backend']]
-                attribute_data[row + '_size'] = Odict(zip(column_names,
-                                                          values))
 
         # =================================================================
         # Write the dataset to a new file in the upload folder

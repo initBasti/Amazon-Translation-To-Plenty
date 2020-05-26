@@ -19,28 +19,19 @@ class WrongFormatError(Exception):
         super().__init__(message)
 
 
-def findFile(path, amount):
-    # =========================================================================
-    # Initialization area
-    # =========================================================================
+def findFile(path):
+    """
+        Search in a given folder for any file in the format of
+        translation_xxx.csv, if there is no hit open a file dialog.
+
+        Parameter:
+            path [String] : Path of the specified folder
+
+        Return:
+            outputfile [String] : Path of the file
+    """
+    outputfile = ''
     files = list()
-    output_file = {
-                    'connect': {
-                                        'path': '',
-                                        'encoding': ''
-                                    },
-                    'translation':  {
-                                        'path': '',
-                                        'encoding': ''
-                                    },
-                    'attribute':           {
-                                        'path': '',
-                                        'encoding': ''
-                                    }
-                }
-    # =========================================================================
-    # Use the walk function to list all files inside the output folder
-    # =========================================================================
     try:
         for(dirpath, dirnames, filenames) in os.walk(path):
             files.extend(filenames)
@@ -49,58 +40,18 @@ def findFile(path, amount):
               .format(sys.exc_info()[2].tb_lineno, err))
 
     if(len(files) == 0):
-        # =====================================================================
-        # No files in the folder, terminate application throw error
-        # =====================================================================
-        tmb.showerror("Failed!",
-                      "There is no output file, in the Report folder")
+        tmb.showerror("No input error!",
+                      "There is no input file, in the Input folder")
         sys.exit(1)
 
-    elif(len(files) > amount):
-        # =====================================================================
-        # There is more than 3 file let the user choose a file
-        # =====================================================================
-        print("more files than amount")
-        for index, opt in enumerate([*output_file]):
-            output_file[opt]['path'] = fd.askopenfilename(title="{0} file"
-                                                          .format(opt),
-                                                          initialdir=path)
+    for i in range(len(files)):
+        if(re.search(r'\btranslation_\w+.csv\b', files[i])):
+            outputfile = os.path.join(path, files[i])
+    if not outputfile:
+        outputfile = fd.askopenfilename(title="Translation file",
+                                        initialdir=path)
 
-    elif(len(files) == amount):
-        # =====================================================================
-        # There are only 3 file, check if the files are csv
-        # and check for the names: translation, id, connect
-        # =====================================================================
-        for opt in [*output_file]:
-            for i in range(amount):
-                try:
-                    if(re.search(r'\b%s_\w+.csv\b' % opt, files[i])):
-                        output_file[opt]['path'] = os.path.join(path,
-                                                                files[i])
-                    elif(re.match(r'\b{0}-\w+.csv\b'.format(opt), files[i])):
-                        output_file[opt]['path'] = os.path.join(path,
-                                                                files[i])
-                    elif(re.match(r'\b{0}\w+.csv\b'.format(opt), files[i])):
-                        output_file[opt]['path'] = os.path.join(path,
-                                                                files[i])
-
-                except Exception as err:
-                    print("Error @ line: {0} | Checking .csv and name\n{1}\n"
-                          .format(sys.exc_info()[2].tb_lineno, err))
-
-    for index, opt in enumerate([*output_file]):
-        if(not(output_file[opt]['path'])):
-            # =================================================================
-            # import OrderedDict as Odict If there is still no path
-            # decleared let the user choose
-            # =================================================================
-            output_file[opt]['path'] = fd.askopenfilename(title="{0} file!"
-                                                          .format(opt),
-                                                          initialdir=path)
-
-    output_file = checkEncoding(data=output_file)
-
-    return output_file
+    return outputfile
 
 
 def openFiles(files):
@@ -189,22 +140,16 @@ def checkEncoding(data):
     raw_data = ''
     for index, opt in enumerate([*data]):
         try:
-            # =================================================================
-            # Check the encoding of the path
-            # =================================================================
-            with open(data[opt]['path'], mode='rb') as item:
+            with open(data['path'], mode='rb') as item:
                 raw_data = item.read(50000)
-            data[opt]['encoding'] = chardet.detect(raw_data)['encoding']
+            data['encoding'] = chardet.detect(raw_data)['encoding']
         except Exception as err:
             print("Error @ line: {0} | Error at encode check\nError: {1}|{2}\n"
                   .format(sys.exc_info()[2].tb_lineno, err,
-                          data[opt]['path']))
+                          data['path']))
 
-        if(not(data[opt]['encoding'])):
-            # =================================================================
-            # If there is no encoding assigned assume it to be utf-8
-            # =================================================================
-            data[opt]['encoding'] = 'utf-8'
+        if(not(data['encoding'])):
+            data['encoding'] = 'utf-8'
 
     return data
 

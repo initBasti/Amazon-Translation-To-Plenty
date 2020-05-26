@@ -5,10 +5,11 @@ import sys
 import datetime
 import tkinter
 import argparse
+import configparser
 from tkinter import messagebox as tmb
-from packages.openfile import findFile, openFiles
-from packages.openfile import property_assign, feature_assign, text_assign
-from packages.openfile import find_duplicates
+from packages.openfile import (
+    findFile, openFiles, property_assign, feature_assign,
+    text_assign, find_duplicates, checkEncoding)
 from packages.writefile import writeFile
 
 
@@ -20,7 +21,10 @@ def main():
     x_Data = {'property': Odict(), 'feature': Odict(), 'text': Odict()}
     inputpath = ''
     outputpath = ''
-    inputfiles = dict()
+    inputfiles = {
+        'attribute':{'path':'', 'encoding':''},
+        'translation':{'path':'', 'encoding':''},
+        'connect':{'path':'', 'encoding':''}}
     outputfile = ''
     propertyfile = ''
     featurefile = ''
@@ -46,6 +50,17 @@ def main():
         lang = lang.upper()
     else:
         lang = 'default'.upper()
+
+    # =========================================================================
+    # Read the URL of the elasitc export formats for the attribute values
+    # and the variation-attribute mapping
+    # =========================================================================
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    if not config.sections():
+        print(f"config.ini required\n{err}")
+        exit(1)
+
 
     # =========================================================================
     # checking the os of the user to get the correct path of the in-/out-put
@@ -76,17 +91,12 @@ def main():
             print("Error @ line : {0} Windows path creation\nError: {1}\n"
                   .format(sys.exc_info()[2].tb_lineno, err))
 
+    inputfiles['attribute']['path'] = config['URL']['attribute_export']
+    inputfiles['connect']['path'] = config['URL']['variation_attribute_mapping']
+    inputfiles['translation']['path'] = findFile(path=inputpath)
+    inputfiles['translation'] = checkEncoding(data=inputfiles['translation'])
+
     if(os.path.exists(inputpath)):
-        # =====================================================================
-        # Find and open the file directly from the folder without
-        # user interaction
-        # =====================================================================
-        try:
-            inputfiles = findFile(path=inputpath, amount=3)
-        except Exception as err:
-            print("Error @ line : {0} finding file\nError: {1}\n"
-                  .format(sys.exc_info()[2].tb_lineno, err))
-            tmb.showerror("Failed!", "File was not found in Report!")
         try:
             Data = openFiles(files=inputfiles)
         except Exception as err:

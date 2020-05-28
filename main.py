@@ -6,60 +6,94 @@ import datetime
 import tkinter
 import argparse
 import configparser
+import pandas
+from io import StringIO
 from tkinter import messagebox as tmb
-from packages.openfile import (
-    findFile, openFiles, property_assign, feature_assign,
+from packages.assignment import (
+    findFile, color_assign, mapping_assign,
     text_assign, find_duplicates, checkEncoding)
 from packages.writefile import writeFile
+from packages.cache import WebCache
 
+def read_data(data):
+    input_frames = {'translation': '', 'attribute':'', 'connect':''}
+
+    df = pandas.read_csv(data['translation']['path'], sep=';')
+    if not 'item_sku' in df.columns or not 'color_name' in df.columns:
+        df = pandas.read_csv(data['translation']['path'], sep=';',
+                             header=2)
+        if not 'item_sku' in df.columns or not 'color_name' in df.columns:
+            print("ERROR: Input file has to be a Amazon flatfile")
+            return None
+    input_frames['translation'] = df
+
+    df = pandas.read_csv(data['attribute']['content'], sep=';')
+    columns = {'AttributeValue.backendName', 'AttributeValueName.name',
+                'AttributeValue.id'}
+    missing_columns = [x for x in columns if x not in df.columns]
+    if missing_columns:
+        print(f"ERROR: attribute file needs the columns: {missing_columns}")
+        return None
+    input_frames['attribute'] = df
+
+    df = pandas.read_csv(data['connect']['content'], sep=';')
+    columns = {'VariationAttributeValues.attributeValues',
+               'VariationBarcode.code'}
+    missing_columns = [x for x in columns if x not in df.columns]
+    if missing_columns:
+        print(f"ERROR: colorconnect file needs the columns: {missing_columns}")
+        return None
+    input_frames['connect'] = df
+
+    return input_frames
 
 def main():
-    # =========================================================================
-    # Initilization Area
-    # =========================================================================
-    Data = Odict()
-    x_Data = {'property': Odict(), 'feature': Odict(), 'text': Odict()}
     inputpath = ''
     outputpath = ''
     inputfiles = {
-        'attribute':{'path':'', 'encoding':''},
+        'attribute':{'path':'', 'encoding':'', 'content':''},
         'translation':{'path':'', 'encoding':''},
-        'connect':{'path':'', 'encoding':''}}
+        'connect':{'path':'', 'encoding':'', 'content':''}}
     outputfile = ''
-    propertyfile = ''
-    featurefile = ''
-    textfile = ''
     todaystr = ''
+    attribute_name = ''
+    property_name = ''
+    feature_name = ''
+    text_name = ''
     name = ''
     lang = ''
-
-    attribute_data = Odict()
 
     root = tkinter.Tk()
     root.withdraw()
 
-    # =========================================================================
-    # Getting command line arguments
-    # =========================================================================
     parser = argparse.ArgumentParser(description='lang value')
     parser.add_argument('--l', '--lang', action='store',
-                        choices=['en', 'fr', 'it', 'es'])
+                        choices=['en', 'fr', 'it', 'es'], required=True)
+    parser.add_argument('--clean', dest='clean', default=False,
+                        action='store_true', required=False,
+                        help='clean the cache')
+    parser.add_argument('--page-db', dest='page_db_path',
+                        default='cache/page_db.db', required=False,
+                        help='Location of the page database')
+    parser.add_argument('--time-db', dest='time_db_path',
+                        default='cache/time_db.db', required=False,
+                        help='Location of the time database')
+    parser.add_argument('--ttl', dest='ttl', default='3600',
+                        required=False, help='Time to live of every entry')
     args = parser.parse_args()
     lang = args.l
-    if(lang):
-        lang = lang.upper()
-    else:
-        lang = 'default'.upper()
+    page_db_path = args.page_db_path
+    time_db_path = args.time_db_path
+    ttl = args.ttl
+    clean = args.clean
 
-    # =========================================================================
-    # Read the URL of the elasitc export formats for the attribute values
-    # and the variation-attribute mapping
-    # =========================================================================
     config = configparser.ConfigParser()
     config.read('config.ini')
     if not config.sections():
         print(f"config.ini required\n{err}")
         exit(1)
+    feature_fields = config['FEATURE']
+    property_fields = config['PROPERTY']
 
 
     # =========================================================================
@@ -96,123 +130,79 @@ def main():
     inputfiles['translation']['path'] = findFile(path=inputpath)
     inputfiles['translation'] = checkEncoding(data=inputfiles['translation'])
 
-    if(os.path.exists(inputpath)):
+    cache = WebCache(page_database_path=page_db_path,
+                     time_database_path=time_db_path,
+                     cache_ttl=ttl)
+    if clean is True:
+        cache.clean()
+
+    attr_bin = cache.get_page(
+        url=inputfiles['attribute']['path'].encode('utf-8'))
+    connect_bin = cache.get_page(
+        url=inputfiles['connect']['path'].encode('utf-8'))
+    inputfiles['attribute']['content'] = StringIO(str(attr_bin, 'utf-8'))
+    inputfiles['connect']['content'] = StringIO(str(connect_bin, 'utf-8'))
+
+    input_frames = read_data(data=inputfiles)
+    if not input_frames:
+        sys.exit(1)
+
+    if(os.path.exists(inputpath) and os.path.exists(outputpath)):
         try:
-            Data = openFiles(files=inputfiles)
+            todaystr = datetime.datetime.now().strftime("%d-%m-%Y")
+            name = lang + '_' + todaystr + '.csv'
         except Exception as err:
-            print("Error @ line : {0} opening files\nError: {1}\n"
-                  .format(sys.exc_info()[2].tb_lineno, err))
+            print("Error @ line : {0} date and filename\n{1}\n"
+                    .format(sys.exc_info()[2].tb_lineno, err))
 
-        for i in [*x_Data]:
-            if(lang == 'DEFAULT'):
-                print("WARNING: No language assigned, adjust file!")
-            if i == 'property':
-                x_Data[i] = property_assign(files=inputfiles['translation'],
-                                            lang=lang)
-            elif i == 'feature':
-                x_Data[i] = feature_assign(files=inputfiles['translation'],
-                                           lang=lang)
-            elif i == 'text':
-                x_Data[i] = text_assign(files=inputfiles['translation'])
+        color_df = color_assign(data=input_frames)
+        if len(color_df.index) != 0:
+            attribute_name = os.path.join(outputpath, 'attribute_' + name)
+            color_df.to_csv(attribute_name, sep=';', index=False)
 
-        # =================================================================
-        # create the upload format, remove duplicates
-        # =================================================================
-        Data = find_duplicates(Data)
-        column_names = ['value-name', 'value-id', 'value-backend']
-        for row in Data:
-            if(Data[row]['color_value_translation']):
-                values = [Data[row]['color_value_translation'],
-                          Data[row]['color_id'], Data[row]['color_backend']]
-                attribute_data[row + '_color'] = Odict(zip(column_names,
-                                                           values))
+        print("property mapping")
+        property_df = mapping_assign(data=input_frames['translation'],
+                                      lang=lang, id_fields=property_fields)
+        if len(property_df.index) != 0:
+            property_name = os.path.join(outputpath, 'property_' + name)
+            property_df.to_csv(property_name, sep=';', index=False)
 
-        # =================================================================
-        # Write the dataset to a new file in the upload folder
-        # The name should contain the date
-        # =================================================================
-        if(os.path.exists(outputpath)):
-            try:
-                todaystr = datetime.datetime.now().strftime("%d-%m-%Y")
-                name = lang + '_' + todaystr + '.csv'
-            except Exception as err:
-                print("Error @ line : {0} date and filename\n{1}\n"
-                      .format(sys.exc_info()[2].tb_lineno, err))
-            try:
-                outputfile = writeFile(dataset=attribute_data,
-                                       filename='attribute_' + name,
-                                       folder=outputpath,
-                                       fieldnames=column_names)
-            except Exception as err:
-                print("Error @ line : {0} Writing the file\nError: {1}\n"
-                      .format(sys.exc_info()[2].tb_lineno, err))
-                tmb.showerror("Failed!",
-                              "Error at writing the new file\n")
+        print("feature mapping")
+        feature_df = mapping_assign(data=input_frames['translation'],
+                                    lang=lang, id_fields=feature_fields)
+        if len(feature_df.index) != 0:
+            feature_name = os.path.join(outputpath,'feature_' + name)
+            feature_df.to_csv(feature_name, sep=';', index=False)
 
-            for i in [*x_Data]:
-                try:
-                    if i == 'property':
-                        f_name = [*x_Data['property'][[*x_Data['property']][0]]]
-                        propertyfile = writeFile(dataset=x_Data['property'],
-                                                 filename='property_' + name,
-                                                 folder=outputpath,
-                                                 fieldnames=f_name)
-                    elif i == 'feature':
-                        f_name = [*x_Data['feature'][[*x_Data['feature']][0]]]
-                        featurefile = writeFile(dataset=x_Data['feature'],
-                                                filename='feature_' + name,
-                                                folder=outputpath,
-                                                fieldnames=f_name)
-                    elif i == 'text':
-                        f_name = [*x_Data['text'][[*x_Data['text']][0]]]
-                        textfile = writeFile(dataset=x_Data['text'],
-                                             filename='text_' + name,
-                                             folder=outputpath,
-                                             fieldnames=f_name)
-                except Exception as err:
-                    print("Error @ line : {0} Writing the {2} file\nError: {1}\n"
-                          .format(sys.exc_info()[2].tb_lineno, err, i))
-                    tmb.showerror("Failed!",
-                                  "Error at writing the new {0} file\n"
-                                  .format(i))
+        text_df = text_assign(data=input_frames['translation'])
+        if len(text_df.index) != 0:
+            text_name = os.path.join(outputpath,'text_' + name)
+            text_df.to_csv(text_name, sep=';', index=False)
 
-        else:
-            # =============================================================
-            # If there is no Outputpath throw error and create a
-            # new set of folders
-            # =============================================================
-            tmb.showerror("Failed!",
-                          "Output folder was not found!\n")
-            os.makedirs(outputpath)
-            if(not(os.path.exists(inputpath))):
-                os.makedirs(inputpath)
-        success_list = []
-
-        if(os.path.isfile(outputfile)):
-            success_list.append("attribute-file")
-        if(os.path.isfile(propertyfile)):
-            success_list.append("property-file")
-        if(os.path.isfile(featurefile)):
-            success_list.append("feature-file")
-            tmb.showinfo("Success!", "Finished file created at:\n{0}"
-                         .format(featurefile))
-        if(os.path.isfile(textfile)):
-            success_list.append("text-file")
-
-        if(len(success_list) > 0):
-            tmb.showinfo("Success!", "Created {0} at\n{1}"
-                         .format(",".join(success_list),
-                                 outputpath))
-
+        color_df = find_duplicates(color_df, 'attribute_id')
     else:
-        # =====================================================================
-        # If there is no Inputpath throw error and create a new set of folders
-        # =====================================================================
         tmb.showerror("Failed!",
                       "Input folder was not found!\nCreating a new one..")
-        os.makedirs(inputpath)
+        if(not(os.path.exists(inputpath))):
+            os.makedirs(inputpath)
         if(not(os.path.exists(outputpath))):
             os.makedirs(outputpath)
+
+    success_list = []
+
+    if(os.path.isfile(os.path.join(outputpath, attribute_name))):
+        success_list.append("attribute-file")
+    if(os.path.isfile(os.path.join(outputpath, property_name))):
+        success_list.append("property-file")
+    if(os.path.isfile(os.path.join(outputpath, feature_name))):
+        success_list.append("feature-file")
+    if(os.path.isfile(os.path.join(outputpath, text_name))):
+        success_list.append("text-file")
+
+    if(len(success_list) > 0):
+        tmb.showinfo("Success!", "Created {0} at\n{1}"
+                     .format(",".join(success_list), outputpath))
+
 
 
 if __name__ == '__main__':

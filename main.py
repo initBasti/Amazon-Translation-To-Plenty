@@ -1,71 +1,148 @@
+"""
+    Author: Sebastian Fricke
+    Date: 29.05.20
+    License: GPLv3
+
+    Create upload files for the PlentyMarkets import (Elastic Sync) with
+    translations stored inside of a Amazon Flatfile (csv).
+
+    Pull required mapping information from Plentymarkets and store mapping
+    IDs for properties and features inside of the configuration.
+"""
+
+import re
 import platform
 import os
-from collections import OrderedDict as Odict
 import sys
 import datetime
 import tkinter
 import argparse
 import configparser
-import pandas
 from io import StringIO
 from tkinter import messagebox as tmb
+from tkinter import filedialog as fd
+import pandas
+import chardet
 from packages.assignment import (
-    findFile, color_assign, mapping_assign,
-    text_assign, find_duplicates, checkEncoding)
-from packages.writefile import writeFile
+    color_assign, mapping_assign, text_assign, find_duplicates)
 from packages.cache import WebCache
 
 def read_data(data):
+    """
+        Read the data from the three different files into pandas Dataframes.
+        Check if they contain the required columns.
+        Skip unnecessary columns for files in the amazon flatfile format.
+
+        Parameter:
+            data [Dict] : Dictionary with paths/content of the input files
+
+        Return:
+            input_frames [Dict]: Dictionary of DataFrames
+    """
     input_frames = {'translation': '', 'attribute':'', 'connect':''}
 
-    df = pandas.read_csv(data['translation']['path'], sep=';')
-    if not 'item_sku' in df.columns or not 'color_name' in df.columns:
-        df = pandas.read_csv(data['translation']['path'], sep=';',
-                             header=2)
-        if not 'item_sku' in df.columns or not 'color_name' in df.columns:
+    frame = pandas.read_csv(data['translation']['path'], sep=';')
+    if not 'item_sku' in frame.columns:
+        frame = pandas.read_csv(data['translation']['path'], sep=';',
+                                header=2)
+        if not 'item_sku' in frame.columns:
             print("ERROR: Input file has to be a Amazon flatfile")
             return None
-    input_frames['translation'] = df
+    input_frames['translation'] = frame
 
-    df = pandas.read_csv(data['attribute']['content'], sep=';')
+    frame = pandas.read_csv(data['attribute']['content'], sep=';')
     columns = {'AttributeValue.backendName', 'AttributeValueName.name',
-                'AttributeValue.id'}
-    missing_columns = [x for x in columns if x not in df.columns]
+               'AttributeValue.id'}
+    missing_columns = [x for x in columns if x not in frame.columns]
     if missing_columns:
         print(f"ERROR: attribute file needs the columns: {missing_columns}")
         return None
-    input_frames['attribute'] = df
+    input_frames['attribute'] = frame
 
-    df = pandas.read_csv(data['connect']['content'], sep=';')
+    frame = pandas.read_csv(data['connect']['content'], sep=';')
     columns = {'VariationAttributeValues.attributeValues',
                'VariationBarcode.code'}
-    missing_columns = [x for x in columns if x not in df.columns]
+    missing_columns = [x for x in columns if x not in frame.columns]
     if missing_columns:
         print(f"ERROR: colorconnect file needs the columns: {missing_columns}")
         return None
-    input_frames['connect'] = df
+    input_frames['connect'] = frame
 
     return input_frames
 
-def main():
-    inputpath = ''
-    outputpath = ''
-    inputfiles = {
-        'attribute':{'path':'', 'encoding':'', 'content':''},
-        'translation':{'path':'', 'encoding':''},
-        'connect':{'path':'', 'encoding':'', 'content':''}}
+def find_file(path):
+    """
+        Search in a given folder for any file in the format of
+        translation_xxx.csv, if there is no hit open a file dialog.
+
+        Parameter:
+            path [String] : Path of the specified folder
+
+        Return:
+            outputfile [String] : Path of the file
+    """
     outputfile = ''
-    todaystr = ''
-    attribute_name = ''
-    property_name = ''
-    feature_name = ''
-    text_name = ''
-    name = ''
-    lang = ''
+    files = list()
+    for walk_result in os.walk(path):
+        files.extend(walk_result[2])
 
-    root = tkinter.Tk()
-    root.withdraw()
+    if len(files) == 0:
+        tmb.showerror("No input error!",
+                      "There is no input file, in the Input folder")
+        sys.exit(1)
 
+    for item in files:
+        if re.search(r'\btranslation_\w+.csv\b', item):
+            outputfile = os.path.join(path, item)
+    if not outputfile:
+        outputfile = fd.askopenfilename(title="Translation file",
+                                        initialdir=path)
+
+    return outputfile
+
+def check_encoding(data):
+    """
+        Assume the encoding of the binary raw data of an input file.
+
+        Parameter:
+            data [Dict] : Dictionary object with the path of the file
+
+        Return:
+            data [Dict] : Dictionary with encoding mapping
+    """
+    raw_data = ''
+    with open(data['path'], mode='rb') as item:
+        raw_data = item.read(50000)
+    data['encoding'] = chardet.detect(raw_data)['encoding']
+
+    if not data['encoding']:
+        data['encoding'] = 'utf-8'
+
+    return data
+
+def build_path_name(base_path, name, lang):
+    """
+        Create a path name for a new file with the current date, the
+        language of the translation and .csv as file type.
+
+        Parameter:
+            base_path [String] : Path of the project's Output folder
+            name [String] : Name of the specific file
+
+        Return:
+            [OS.path] : OS independent path to the new file
+    """
+    todaystr = datetime.datetime.now().strftime("%d-%m-%Y")
+    addition = '_' + lang + '_' + todaystr + '.csv'
+    return os.path.join(base_path, name + addition)
+
+def initialize_argument_parser():
+    """
+        Setup the different command-line argument options.
+
+        Return:
+            [Namespace] parsed arguments as namespace
+    """
     parser = argparse.ArgumentParser(description='lang value')
     parser.add_argument('--l', '--lang', action='store',
                         choices=['en', 'fr', 'it', 'es'], required=True)
@@ -80,60 +157,52 @@ def main():
                         help='Location of the time database')
     parser.add_argument('--ttl', dest='ttl', default='3600',
                         required=False, help='Time to live of every entry')
-    args = parser.parse_args()
+    return parser.parse_args()
+
+def main():
+    inputpath = ''
+    outputpath = ''
+    inputfiles = {
+        'attribute':{'path':'', 'encoding':'', 'content':''},
+        'translation':{'path':'', 'encoding':''},
+        'connect':{'path':'', 'encoding':'', 'content':''}}
+    attribute_name = ''
+    property_name = ''
+    feature_name = ''
+    text_name = ''
+    lang = ''
+
+    root = tkinter.Tk()
+    root.withdraw()
+
+    args = initialize_argument_parser()
     lang = args.l
-    page_db_path = args.page_db_path
-    time_db_path = args.time_db_path
-    ttl = args.ttl
-    clean = args.clean
 
     config = configparser.ConfigParser()
     config.read('config.ini')
     if not config.sections():
-        print(f"config.ini required\n{err}")
-        exit(1)
-    feature_fields = config['FEATURE']
-    property_fields = config['PROPERTY']
+        print(f"config.ini required")
+        sys.exit(1)
 
-
-    # =========================================================================
-    # checking the os of the user to get the correct path of the in-/out-put
-    # files
-    # =========================================================================
-    if(platform.system() == 'Linux'):
-        try:
-            inputpath = os.path.join(os.getcwd(), 'Input')
-            outputpath = os.path.join(os.getcwd(), 'Output')
-        except Exception as err:
-            print("Error @ line : {0} Linux path creation\nError: {1}\n"
-                  .format(sys.exc_info()[2].tb_lineno, err))
+    if platform.system() == 'Linux':
+        inputpath = os.path.join(os.getcwd(), 'Input')
+        outputpath = os.path.join(os.getcwd(), 'Output')
 
     else:
-        # =====================================================================
-        # If the system is not linux than the current version only has
-        # executables for windows so in that case the current working directory
-        # in /Windows_Version/~Script-Name~
-        # for increased orientation all the user related activities happen in
-        # /Windows_Version
-        # =====================================================================
-        try:
-            inputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
-                                     'Input')
-            outputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
-                                      'Output')
-        except Exception as err:
-            print("Error @ line : {0} Windows path creation\nError: {1}\n"
-                  .format(sys.exc_info()[2].tb_lineno, err))
+        inputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
+                                 'Input')
+        outputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
+                                  'Output')
 
     inputfiles['attribute']['path'] = config['URL']['attribute_export']
     inputfiles['connect']['path'] = config['URL']['variation_attribute_mapping']
-    inputfiles['translation']['path'] = findFile(path=inputpath)
-    inputfiles['translation'] = checkEncoding(data=inputfiles['translation'])
+    inputfiles['translation']['path'] = find_file(path=inputpath)
+    inputfiles['translation'] = check_encoding(data=inputfiles['translation'])
 
-    cache = WebCache(page_database_path=page_db_path,
-                     time_database_path=time_db_path,
-                     cache_ttl=ttl)
-    if clean is True:
+    cache = WebCache(page_database_path=args.page_db_path,
+                     time_database_path=args.time_db_path,
+                     cache_ttl=args.ttl)
+    if args.clean is True:
         cache.clean()
 
     attr_bin = cache.get_page(
@@ -148,62 +217,58 @@ def main():
         sys.exit(1)
 
     if(os.path.exists(inputpath) and os.path.exists(outputpath)):
-        try:
-            todaystr = datetime.datetime.now().strftime("%d-%m-%Y")
-            name = lang + '_' + todaystr + '.csv'
-        except Exception as err:
-            print("Error @ line : {0} date and filename\n{1}\n"
-                    .format(sys.exc_info()[2].tb_lineno, err))
-
+        print("attribute mapping:")
         color_df = color_assign(data=input_frames)
         if len(color_df.index) != 0:
-            attribute_name = os.path.join(outputpath, 'attribute_' + name)
+            color_df = find_duplicates(color_df, 'attribute_id')
+            attribute_name = build_path_name(base_path=outputpath,
+                                             name='attribute', lang=lang)
             color_df.to_csv(attribute_name, sep=';', index=False)
 
-        print("property mapping")
+        print("property mapping:")
         property_df = mapping_assign(data=input_frames['translation'],
-                                      lang=lang, id_fields=property_fields)
+                                     lang=lang, id_fields=config['PROPERTY'])
         if len(property_df.index) != 0:
-            property_name = os.path.join(outputpath, 'property_' + name)
+            property_name = build_path_name(base_path=outputpath,
+                                            name='property', lang=lang)
             property_df.to_csv(property_name, sep=';', index=False)
 
-        print("feature mapping")
+        print("feature mapping:")
         feature_df = mapping_assign(data=input_frames['translation'],
-                                    lang=lang, id_fields=feature_fields)
+                                    lang=lang, id_fields=config['FEATURE'])
         if len(feature_df.index) != 0:
-            feature_name = os.path.join(outputpath,'feature_' + name)
+            feature_name = build_path_name(base_path=outputpath,
+                                           name='feature', lang=lang)
             feature_df.to_csv(feature_name, sep=';', index=False)
 
         text_df = text_assign(data=input_frames['translation'])
         if len(text_df.index) != 0:
-            text_name = os.path.join(outputpath,'text_' + name)
+            text_name = build_path_name(base_path=outputpath,
+                                        name='text', lang=lang)
             text_df.to_csv(text_name, sep=';', index=False)
 
-        color_df = find_duplicates(color_df, 'attribute_id')
     else:
         tmb.showerror("Failed!",
-                      "Input folder was not found!\nCreating a new one..")
-        if(not(os.path.exists(inputpath))):
+                      "folder/s was/were not found!\nCreating new one/s..")
+        if not os.path.exists(inputpath):
             os.makedirs(inputpath)
-        if(not(os.path.exists(outputpath))):
+        if not os.path.exists(outputpath):
             os.makedirs(outputpath)
 
     success_list = []
 
-    if(os.path.isfile(os.path.join(outputpath, attribute_name))):
+    if os.path.isfile(os.path.join(outputpath, attribute_name)):
         success_list.append("attribute-file")
-    if(os.path.isfile(os.path.join(outputpath, property_name))):
+    if os.path.isfile(os.path.join(outputpath, property_name)):
         success_list.append("property-file")
-    if(os.path.isfile(os.path.join(outputpath, feature_name))):
+    if os.path.isfile(os.path.join(outputpath, feature_name)):
         success_list.append("feature-file")
-    if(os.path.isfile(os.path.join(outputpath, text_name))):
+    if os.path.isfile(os.path.join(outputpath, text_name)):
         success_list.append("text-file")
 
-    if(len(success_list) > 0):
+    if len(success_list) > 0:
         tmb.showinfo("Success!", "Created {0} at\n{1}"
                      .format(",".join(success_list), outputpath))
-
-
 
 if __name__ == '__main__':
     main()

@@ -211,7 +211,8 @@ def find_duplicates(target_df, column):
         Return:
             target_df (unique) [DataFrame]
     """
-    return target_df[target_df[column] == target_df[column].unique()]
+    target_df.drop_duplicates(subset=column, inplace=True)
+    return target_df
 
 def prepare_barcode_value(data, column):
     """

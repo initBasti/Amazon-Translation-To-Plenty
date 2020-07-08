@@ -24,7 +24,7 @@ from tkinter import filedialog as fd
 import pandas
 import chardet
 from packages.assignment import (
-    color_assign, mapping_assign, text_assign, find_duplicates)
+    color_assign, mapping_assign, text_assign)
 from packages.cache import WebCache
 
 def read_data(data):
@@ -136,6 +136,30 @@ def build_path_name(base_path, name, lang):
     addition = '_' + lang + '_' + todaystr + '.csv'
     return os.path.join(base_path, name + addition)
 
+def create_upload_file(data, name, path, lang, id_fields=''):
+    """
+        Wrapper around the assignment function for the different types:
+            attribute, property, feature and text
+
+        Parameter:
+            data [DataFrame]
+            name [String]       : Start of the name of the file
+            path [String]       : File path of the 'Output' folder
+            lang [String]       : CLI argument of the chosen language
+            id_fields [Dict]    : Mapping of Plentymarkets ID to Amazon
+                                  Flatfile column name
+    """
+    print(f"{name} mapping:")
+    if name == 'attribute':
+        frame = color_assign(data=data)
+    elif name in ('property', 'feature'):
+        frame = mapping_assign(data=data, lang=lang, id_fields=id_fields)
+    elif name == 'text':
+        frame = text_assign(data=data)
+    if len(frame.index) != 0:
+        write_path = build_path_name(base_path=path, name=name, lang=lang)
+        frame.to_csv(write_path, sep=';', index=False)
+
 def initialize_argument_parser():
     """
         Setup the different command-line argument options.
@@ -196,7 +220,8 @@ def main():
 
     inputfiles['attribute']['path'] = config['URL']['attribute_export']
     inputfiles['connect']['path'] = config['URL']['variation_attribute_mapping']
-    inputfiles['translation']['path'] = find_file(path=inputpath)
+    if os.path.exists(inputpath):
+        inputfiles['translation']['path'] = find_file(path=inputpath)
     inputfiles['translation'] = check_encoding(data=inputfiles['translation'])
 
     cache = WebCache(page_database_path=args.page_db_path,
@@ -216,36 +241,17 @@ def main():
     if not input_frames:
         sys.exit(1)
 
-    if(os.path.exists(inputpath) and os.path.exists(outputpath)):
-        print("attribute mapping:")
-        color_df = color_assign(data=input_frames)
-        if len(color_df.index) != 0:
-            color_df = find_duplicates(color_df, 'attribute_id')
-            attribute_name = build_path_name(base_path=outputpath,
-                                             name='attribute', lang=lang)
-            color_df.to_csv(attribute_name, sep=';', index=False)
-
-        print("property mapping:")
-        property_df = mapping_assign(data=input_frames['translation'],
-                                     lang=lang, id_fields=config['PROPERTY'])
-        if len(property_df.index) != 0:
-            property_name = build_path_name(base_path=outputpath,
-                                            name='property', lang=lang)
-            property_df.to_csv(property_name, sep=';', index=False)
-
-        print("feature mapping:")
-        feature_df = mapping_assign(data=input_frames['translation'],
-                                    lang=lang, id_fields=config['FEATURE'])
-        if len(feature_df.index) != 0:
-            feature_name = build_path_name(base_path=outputpath,
-                                           name='feature', lang=lang)
-            feature_df.to_csv(feature_name, sep=';', index=False)
-
-        text_df = text_assign(data=input_frames['translation'])
-        if len(text_df.index) != 0:
-            text_name = build_path_name(base_path=outputpath,
-                                        name='text', lang=lang)
-            text_df.to_csv(text_name, sep=';', index=False)
+    if os.path.exists(outputpath):
+        create_upload_file(data=input_frames, name='attribute',
+                           path=outputpath, lang=lang)
+        create_upload_file(data=input_frames['translation'], name='property',
+                           path=outputpath, lang=lang,
+                           id_fields=config['PROPERTY'])
+        create_upload_file(data=input_frames['translation'], name='feature',
+                           path=outputpath, lang=lang,
+                           id_fields=config['FEATURE'])
+        create_upload_file(data=input_frames['translation'], name='text',
+                           path=outputpath, lang=lang)
 
     else:
         tmb.showerror("Failed!",

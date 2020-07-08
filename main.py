@@ -159,6 +159,7 @@ def create_upload_file(data, name, path, lang, id_fields=''):
     if len(frame.index) != 0:
         write_path = build_path_name(base_path=path, name=name, lang=lang)
         frame.to_csv(write_path, sep=';', index=False)
+        print(f"Data saved successfully under {write_path}.")
 
 def initialize_argument_parser():
     """
@@ -190,10 +191,6 @@ def main():
         'attribute':{'path':'', 'encoding':'', 'content':''},
         'translation':{'path':'', 'encoding':''},
         'connect':{'path':'', 'encoding':'', 'content':''}}
-    attribute_name = ''
-    property_name = ''
-    feature_name = ''
-    text_name = ''
     lang = ''
 
     root = tkinter.Tk()
@@ -255,26 +252,11 @@ def main():
 
     else:
         tmb.showerror("Failed!",
-                      "folder/s was/were not found!\nCreating new one/s..")
+                      "folders were not found!\nCreating new ones..")
         if not os.path.exists(inputpath):
             os.makedirs(inputpath)
         if not os.path.exists(outputpath):
             os.makedirs(outputpath)
-
-    success_list = []
-
-    if os.path.isfile(os.path.join(outputpath, attribute_name)):
-        success_list.append("attribute-file")
-    if os.path.isfile(os.path.join(outputpath, property_name)):
-        success_list.append("property-file")
-    if os.path.isfile(os.path.join(outputpath, feature_name)):
-        success_list.append("feature-file")
-    if os.path.isfile(os.path.join(outputpath, text_name)):
-        success_list.append("text-file")
-
-    if len(success_list) > 0:
-        tmb.showinfo("Success!", "Created {0} at\n{1}"
-                     .format(",".join(success_list), outputpath))
 
 if __name__ == '__main__':
     main()

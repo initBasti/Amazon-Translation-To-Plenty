@@ -67,6 +67,9 @@ def color_assign(data):
     print("execution time: {0} us"
           .format(round(time.time()-starttime, 4)*1000000))
 
+    if len(color_df.index) != 0:
+        color_df = find_duplicates(color_df, 'attribute_id')
+
     return color_df
 
 def mapping_assign(data, lang, id_fields):

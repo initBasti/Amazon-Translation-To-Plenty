@@ -32,7 +32,27 @@ def color_assign(data):
         Return:
             color_df [DataFrame] : Color ID and new Value for the import
     """
-    starttime = time.time()
+    new_df = sku_attribute_mapping(data=data)
+
+    color_df = new_df[['attribute_id', 'color_name']]
+
+    if len(color_df.index) != 0:
+        color_df = find_duplicates(color_df, 'attribute_id')
+
+    return color_df
+
+def sku_attribute_mapping(data):
+    """
+        Map a variation number to an attribute id, by looking up the variation
+        on PlentyMarkets, parsing the attribute value and looking up the
+        attribute ID.
+
+        Parameter:
+            files [dict] : Dictionary of Dataframes
+
+        Return:
+            new_df [DataFrame] : Mapping frame of SKU and attribute
+    """
     new_df = ''
     connect_df = data['connect']
 
@@ -63,14 +83,7 @@ def color_assign(data):
     new_df['attribute_id'] = new_df['color_name_german'].apply(
         lambda x: find_id_for_color(attribute_df, x))
 
-    color_df = new_df[['attribute_id', 'color_name']]
-    print("execution time: {0} us"
-          .format(round(time.time()-starttime, 4)*1000000))
-
-    if len(color_df.index) != 0:
-        color_df = find_duplicates(color_df, 'attribute_id')
-
-    return color_df
+    return new_df
 
 def mapping_assign(data, lang, id_fields):
     """
@@ -149,6 +162,8 @@ def find_id_for_color(data, color):
         Return:
             [String] : ID of the backend entry for the color or NaN
     """
+    if not color:
+        return 0
     back_key = 'AttributeValue.backendName'
     val_key = 'AttributeValueName.name'
     id_key = 'AttributeValue.id'

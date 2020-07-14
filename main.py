@@ -25,6 +25,9 @@ import pandas
 import chardet
 from packages.assignment import (
     color_assign, mapping_assign, text_assign)
+from packages.conflict_check import (
+    ConflictChecker
+)
 from packages.cache import WebCache
 
 def read_data(data):
@@ -182,6 +185,9 @@ def initialize_argument_parser():
                         help='Location of the time database')
     parser.add_argument('--ttl', dest='ttl', default='3600',
                         required=False, help='Time to live of every entry')
+    parser.add_argument('--conflict_check', dest='conflict', required=False,
+                        help='Check if multiple variations use the same color',
+                        action='store_true')
     return parser.parse_args()
 
 def main():
@@ -237,6 +243,18 @@ def main():
     input_frames = read_data(data=inputfiles)
     if not input_frames:
         sys.exit(1)
+
+    if args.conflict:
+        checker = ConflictChecker(attributes=input_frames['attribute'],
+                                  translation=input_frames['translation'],
+                                  mapping=input_frames['connect'])
+        collision = checker.detect_color_collision()
+        if len(collision.index) != 0 and os.path.exists(outputpath):
+            write_path = build_path_name(base_path=outputpath,
+                                         name='collision', lang=lang)
+            collision.to_csv(write_path, sep=';', index=False)
+        else:
+            print('No collisions between color attributes detected.')
 
     if os.path.exists(outputpath):
         create_upload_file(data=input_frames, name='attribute',

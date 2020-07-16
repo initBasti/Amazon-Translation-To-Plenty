@@ -1,7 +1,7 @@
 /Input
 /old_input
 /Output
-/test
 /packages/__pycache__
 config.ini
 /cache/*
+/test/__pycache__

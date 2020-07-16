@@ -170,13 +170,14 @@ def find_id_for_color(data, color):
     backendname = data[back_key]
     valuename = data[val_key]
 
-    backend_match = backendname[backendname.str.match(color)]
+    backend_match = backendname[backendname == color]
     if len(backend_match.index) == 0:
-        value_match = valuename[valuename.str.match(color)]
+        value_match = valuename[valuename == color]
         if len(value_match.index) == 0:
             return numpy.nan
         return data[data[val_key] == value_match.max()][id_key].max()
     return data[data[back_key] == backend_match.max()][id_key].max()
+
 
 def parse_color_value(line):
     """

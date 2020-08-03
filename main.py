@@ -24,54 +24,29 @@ from tkinter import filedialog as fd
 import pandas
 import chardet
 from packages.assignment import (
-    color_assign, mapping_assign, text_assign)
-from packages.conflict_check import (
-    ConflictChecker
-)
-from packages.cache import WebCache
+    mapping_assign, text_assign)
 
 def read_data(data):
     """
-        Read the data from the three different files into pandas Dataframes.
+        Read the data from the translation file into a pandas Dataframe.
         Check if they contain the required columns.
         Skip unnecessary columns for files in the amazon flatfile format.
 
         Parameter:
-            data [Dict] : Dictionary with paths/content of the input files
+            data [Dict] : Dictionary with paths/content of the input file
 
         Return:
-            input_frames [Dict]: Dictionary of DataFrames
+            [DataFrame]
     """
-    input_frames = {'translation': '', 'attribute':'', 'connect':''}
-
-    frame = pandas.read_csv(data['translation']['path'], sep=';')
+    frame = pandas.read_csv(data['path'], sep=';')
     if not 'item_sku' in frame.columns:
-        frame = pandas.read_csv(data['translation']['path'], sep=';',
+        frame = pandas.read_csv(data['path'], sep=';',
                                 header=2)
         if not 'item_sku' in frame.columns:
             print("ERROR: Input file has to be a Amazon flatfile")
             return None
-    input_frames['translation'] = frame
 
-    frame = pandas.read_csv(data['attribute']['content'], sep=';')
-    columns = {'AttributeValue.backendName', 'AttributeValueName.name',
-               'AttributeValue.id'}
-    missing_columns = [x for x in columns if x not in frame.columns]
-    if missing_columns:
-        print(f"ERROR: attribute file needs the columns: {missing_columns}")
-        return None
-    input_frames['attribute'] = frame
-
-    frame = pandas.read_csv(data['connect']['content'], sep=';')
-    columns = {'VariationAttributeValues.attributeValues',
-               'VariationBarcode.code'}
-    missing_columns = [x for x in columns if x not in frame.columns]
-    if missing_columns:
-        print(f"ERROR: colorconnect file needs the columns: {missing_columns}")
-        return None
-    input_frames['connect'] = frame
-
-    return input_frames
+    return frame
 
 def find_file(path):
     """
@@ -153,9 +128,7 @@ def create_upload_file(data, name, path, lang, id_fields=''):
                                   Flatfile column name
     """
     print(f"{name} mapping:")
-    if name == 'attribute':
-        frame = color_assign(data=data)
-    elif name in ('property', 'feature'):
+    if name in ('property', 'feature'):
         frame = mapping_assign(data=data, lang=lang, id_fields=id_fields)
     elif name == 'text':
         frame = text_assign(data=data)
@@ -174,29 +147,12 @@ def initialize_argument_parser():
     parser = argparse.ArgumentParser(description='lang value')
     parser.add_argument('--l', '--lang', action='store',
                         choices=['en', 'fr', 'it', 'es'], required=True)
-    parser.add_argument('--clean', dest='clean', default=False,
-                        action='store_true', required=False,
-                        help='clean the cache')
-    parser.add_argument('--page-db', dest='page_db_path',
-                        default='cache/page_db.db', required=False,
-                        help='Location of the page database')
-    parser.add_argument('--time-db', dest='time_db_path',
-                        default='cache/time_db.db', required=False,
-                        help='Location of the time database')
-    parser.add_argument('--ttl', dest='ttl', default='3600',
-                        required=False, help='Time to live of every entry')
-    parser.add_argument('--conflict_check', dest='conflict', required=False,
-                        help='Check if multiple variations use the same color',
-                        action='store_true')
     return parser.parse_args()
 
 def main():
     inputpath = ''
     outputpath = ''
-    inputfiles = {
-        'attribute':{'path':'', 'encoding':'', 'content':''},
-        'translation':{'path':'', 'encoding':''},
-        'connect':{'path':'', 'encoding':'', 'content':''}}
+    inputfile = {'path':'', 'encoding':''}
     lang = ''
 
     root = tkinter.Tk()
@@ -221,51 +177,23 @@ def main():
         outputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
                                   'Output')
 
-    inputfiles['attribute']['path'] = config['URL']['attribute_export']
-    inputfiles['connect']['path'] = config['URL']['variation_attribute_mapping']
     if os.path.exists(inputpath):
-        inputfiles['translation']['path'] = find_file(path=inputpath)
-    inputfiles['translation'] = check_encoding(data=inputfiles['translation'])
+        inputfile['path'] = find_file(path=inputpath)
+    print(inputfile)
+    inputfile = check_encoding(data=inputfile)
 
-    cache = WebCache(page_database_path=args.page_db_path,
-                     time_database_path=args.time_db_path,
-                     cache_ttl=args.ttl)
-    if args.clean is True:
-        cache.clean()
-
-    attr_bin = cache.get_page(
-        url=inputfiles['attribute']['path'].encode('utf-8'))
-    connect_bin = cache.get_page(
-        url=inputfiles['connect']['path'].encode('utf-8'))
-    inputfiles['attribute']['content'] = StringIO(str(attr_bin, 'utf-8'))
-    inputfiles['connect']['content'] = StringIO(str(connect_bin, 'utf-8'))
-
-    input_frames = read_data(data=inputfiles)
-    if not input_frames:
+    input_frame = read_data(data=inputfile)
+    if len(input_frame.index) == 0:
         sys.exit(1)
 
-    if args.conflict:
-        checker = ConflictChecker(attributes=input_frames['attribute'],
-                                  translation=input_frames['translation'],
-                                  mapping=input_frames['connect'])
-        collision = checker.detect_color_collision()
-        if len(collision.index) != 0 and os.path.exists(outputpath):
-            write_path = build_path_name(base_path=outputpath,
-                                         name='collision', lang=lang)
-            collision.to_csv(write_path, sep=';', index=False)
-        else:
-            print('No collisions between color attributes detected.')
-
     if os.path.exists(outputpath):
-        create_upload_file(data=input_frames, name='attribute',
-                           path=outputpath, lang=lang)
-        create_upload_file(data=input_frames['translation'], name='property',
+        create_upload_file(data=input_frame, name='property',
                            path=outputpath, lang=lang,
                            id_fields=config['PROPERTY'])
-        create_upload_file(data=input_frames['translation'], name='feature',
+        create_upload_file(data=input_frame, name='feature',
                            path=outputpath, lang=lang,
                            id_fields=config['FEATURE'])
-        create_upload_file(data=input_frames['translation'], name='text',
+        create_upload_file(data=input_frame, name='text',
                            path=outputpath, lang=lang)
 
     else:

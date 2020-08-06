@@ -26,6 +26,15 @@ import chardet
 from packages.assignment import (
     mapping_assign, text_assign)
 
+if sys.platform == 'linux':
+    linux_user = os.getlogin()
+    CONFIG_FILE = os.path.join('/', 'home', str(f'{linux_user}'),
+                               '.translation_to_plenty_config.ini')
+elif sys.platform == 'win32':
+    win_user = os.getlogin()
+    CONFIG_FILE = os.path.join('C:', 'Users', str(f'{win_user}'),
+                               '.translation_to_plenty_config.ini')
+
 def read_data(data):
     """
         Read the data from the translation file into a pandas Dataframe.
@@ -162,9 +171,9 @@ def main():
     lang = args.l
 
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(CONFIG_FILE)
     if not config.sections():
-        print(f"config.ini required")
+        print(f"{CONFIG_FILE} required")
         sys.exit(1)
 
     if platform.system() == 'Linux':

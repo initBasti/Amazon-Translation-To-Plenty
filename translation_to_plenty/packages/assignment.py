@@ -37,7 +37,6 @@ def mapping_assign(data, lang, id_fields):
             [DataFrame]
     """
     row_list = []
-    starttime = time.time()
 
     frame = data
 
@@ -58,8 +57,6 @@ def mapping_assign(data, lang, id_fields):
 
     new_frame.dropna(subset=['value'], inplace=True)
     new_frame = new_frame[new_frame['value'] != ' '].reset_index(drop=True)
-    print("execution time: {0} us"
-          .format(round(time.time()-starttime, 4)*1000000))
     return new_frame
 
 def text_assign(data):
@@ -72,7 +69,6 @@ def text_assign(data):
         Return:
             [DataFrame]
     """
-    starttime = time.time()
     frame = data
     frame = frame[frame['parent_child'] == 'parent']
     required_columns = ['item_sku', 'product_description', 'generic_keywords']
@@ -80,6 +76,4 @@ def text_assign(data):
     if missing_columns:
         print(f"Flatfile doesn't contain required column/s: {missing_columns}")
         return None
-    print("text assign\nexecution time: {0} us"
-          .format(round(time.time()-starttime, 4)*1000000))
     return frame[required_columns]

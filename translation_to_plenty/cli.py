@@ -10,29 +10,25 @@
     IDs for properties and features inside of the configuration.
 """
 
-import re
-import platform
 import os
 import sys
 import datetime
 import tkinter
 import argparse
 import configparser
-from io import StringIO
 from tkinter import messagebox as tmb
 from tkinter import filedialog as fd
 import pandas
 import chardet
-from packages.assignment import (
+from translation_to_plenty.packages.assignment import (
     mapping_assign, text_assign)
 
+USER = os.getlogin()
 if sys.platform == 'linux':
-    linux_user = os.getlogin()
-    CONFIG_FILE = os.path.join('/', 'home', str(f'{linux_user}'),
+    CONFIG_FILE = os.path.join('/', 'home', str(f'{USER}'),
                                '.translation_to_plenty_config.ini')
 elif sys.platform == 'win32':
-    win_user = os.getlogin()
-    CONFIG_FILE = os.path.join('C:', 'Users', str(f'{win_user}'),
+    CONFIG_FILE = os.path.join('C:', 'Users', str(f'{USER}'),
                                '.translation_to_plenty_config.ini')
 
 def read_data(data):
@@ -56,36 +52,6 @@ def read_data(data):
             return None
 
     return frame
-
-def find_file(path):
-    """
-        Search in a given folder for any file in the format of
-        translation_xxx.csv, if there is no hit open a file dialog.
-
-        Parameter:
-            path [String] : Path of the specified folder
-
-        Return:
-            outputfile [String] : Path of the file
-    """
-    outputfile = ''
-    files = list()
-    for walk_result in os.walk(path):
-        files.extend(walk_result[2])
-
-    if len(files) == 0:
-        tmb.showerror("No input error!",
-                      "There is no input file, in the Input folder")
-        sys.exit(1)
-
-    for item in files:
-        if re.search(r'\btranslation_\w+.csv\b', item):
-            outputfile = os.path.join(path, item)
-    if not outputfile:
-        outputfile = fd.askopenfilename(title="Translation file",
-                                        initialdir=path)
-
-    return outputfile
 
 def check_encoding(data):
     """
@@ -154,21 +120,30 @@ def initialize_argument_parser():
             [Namespace] parsed arguments as namespace
     """
     parser = argparse.ArgumentParser(description='lang value')
-    parser.add_argument('--l', '--lang', action='store',
-                        choices=['en', 'fr', 'it', 'es'], required=True)
+    parser.add_argument('-l', '--lang', action='store',
+                        choices=['en', 'fr', 'it', 'es'], required=True,
+                        dest='lang')
+    parser.add_argument('--custom-input-folder', '-i', action='store_true',
+                        dest='input_path')
+    parser.add_argument('--custom-output-folder', '-o', action='store_true',
+                        dest='output_path')
     return parser.parse_args()
 
-def main():
+def cli():
     inputpath = ''
     outputpath = ''
     inputfile = {'path':'', 'encoding':''}
-    lang = ''
 
     root = tkinter.Tk()
     root.withdraw()
 
     args = initialize_argument_parser()
-    lang = args.l
+
+    if args.input_path:
+        custom_input_path = fd.askdirectory(title='custom input file folder')
+
+    if args.output_path:
+        custom_output_path = fd.askdirectory(title='custom output file folder')
 
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
@@ -176,19 +151,29 @@ def main():
         print(f"{CONFIG_FILE} required")
         sys.exit(1)
 
-    if platform.system() == 'Linux':
-        inputpath = os.path.join(os.getcwd(), 'Input')
-        outputpath = os.path.join(os.getcwd(), 'Output')
+    if args.input_path:
+        if os.path.exists(args.input_path):
+            config['GENERAL']['custom_input_folder'] = custom_input_path
 
+    if args.output_path:
+        if os.path.exists(args.output_path):
+            config['GENERAL']['custom_output_folder'] = custom_output_path
+
+    if args.input_path or args.output_path:
+        with open(CONFIG_FILE, mode='w') as configfile:
+            config.write(configfile)
+
+    if config['GENERAL']['custom_input_folder']:
+        inputpath = config['GENERAL']['custom_input_folder']
+
+    if config['GENERAL']['custom_output_folder']:
+        outputpath = config['GENERAL']['custom_output_folder']
+
+    if inputpath:
+        inputfile['path'] = fd.askopenfilename(title="Translation file",
+                                       initialdir=inputpath)
     else:
-        inputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
-                                 'Input')
-        outputpath = os.path.join(os.path.join(os.getcwd(), os.pardir),
-                                  'Output')
-
-    if os.path.exists(inputpath):
-        inputfile['path'] = find_file(path=inputpath)
-    print(inputfile)
+        inputfile['path'] = fd.askopenfilename(title="Translation file")
     inputfile = check_encoding(data=inputfile)
 
     input_frame = read_data(data=inputfile)
@@ -197,13 +182,13 @@ def main():
 
     if os.path.exists(outputpath):
         create_upload_file(data=input_frame, name='property',
-                           path=outputpath, lang=lang,
+                           path=outputpath, lang=args.lang,
                            id_fields=config['PROPERTY'])
         create_upload_file(data=input_frame, name='feature',
-                           path=outputpath, lang=lang,
+                           path=outputpath, lang=args.lang,
                            id_fields=config['FEATURE'])
         create_upload_file(data=input_frame, name='text',
-                           path=outputpath, lang=lang)
+                           path=outputpath, lang=args.lang)
 
     else:
         tmb.showerror("Failed!",
@@ -212,6 +197,3 @@ def main():
             os.makedirs(inputpath)
         if not os.path.exists(outputpath):
             os.makedirs(outputpath)
-
-if __name__ == '__main__':
-    main()

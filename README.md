@@ -7,33 +7,26 @@ Map the translations within your Amazon flatfile to the correct fields.
 **Dependencies**:
     * python3.x
     * pandas library
-    * numpy library
-    * argparse library
-    * configparse library
     * tkinter library
-    * chardet library
-    * urllib library
-    * bsddb3 library
 
 ### Prerequisites
 
 1. Translations in the Amazon flatfile format
-2. Attribute Elastic-export format at Plentymarkets as HTTP [Save the link into the Configuration]
-    * ***Required Columns:***
-        - AttributeValue.id
-        - AttributeValueName.name
-        - AttributeValue.backendName
-3. Variation-Mapping Export from Plentymarkets as HTTP [Save the link into the Configuration]
-    * ***Required Columns:***
-        - VariationBarcode.code
-        - VariationAttributeValues.attributeValues
 
 ## Usage
 
-* Map the columns from the translation file to the appropriate feature/property in Plentymarkets (Example in the example_config.ini)
-* Place the translation file as .csv , delimited by ';' into the Input Folder
-* Name the file Translatin_{custom}.csv (if the script should work automatically)
-* start script with : python3 main.py --lang {language of your choice}
+* Map the columns from the translation file to the appropriate feature/property ID in Plentymarkets
+  ('color_name'=10) 'color_name' = exact name of the columns third row in the amazon flatfile, 10 = ID of the property/Feature in Plenytmarkets
+  Example:
+  ```
+  [PROPERTY]
+  'color_name'=10
+  [FEATURE]
+  'size_name'=5
+  ```
+* Save the translation file as .csv , delimited by ';' into the any Folder
+* Set a custom input / output folder with the arguments: -i / -o (As default start for the file browser)
+* start script with : python3 -m translation_to_plenty --lang {language of your choice}
     [valid values: en, fr, it, es ..]
 * etc   * Upload files using Import(Elastic Sync)
 
